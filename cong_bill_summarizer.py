@@ -1,6 +1,8 @@
 from openai import OpenAI
 import openai
+#from dotenv import load_dotenv
 import requests
+from datetime import datetime, timedelta
 import json
 import os
 from bs4 import BeautifulSoup
@@ -10,6 +12,11 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
+#load_dotenv()
+#for name, value in os.environ.items():
+# print("{0}: {1}".format(name, value))
+
+# Checking for API key access
 
 congress_api_key = os.getenv('CONGRESS_API_KEY')
 if congress_api_key is not None:
@@ -23,14 +30,18 @@ if openai.api_key is not None:
 else:
     print("OpenAI API Key not found. Please set it as an environment variable.")
 
-
-
+# Setting up the first Congress.gov API call for summaries
+    
 headers = {
     'X-API-KEY' : congress_api_key
     }
 
-start_date = '2024-02-11'
-end_date = '2024-02-18'
+today = datetime.now()
+days_to_last_monday = (today.weekday() - 0) % 7 + 7
+last_monday = today - timedelta(days=days_to_last_monday)
+last_sunday = last_monday + timedelta(days=6)
+start_date = last_monday.strftime('%Y-%m-%d')
+end_date = last_sunday.strftime('%Y-%m-%d')
 
 url = f'https://api.congress.gov/v3/summaries?fromDateTime={start_date}T00:00:00Z&toDateTime={end_date}T00:00:00Z&sort=updateDate+asc'
 
@@ -43,6 +54,8 @@ else:
     print(f"Failed to retrieve data: {response.status_code}")
 
 bills = data['summaries']
+
+# Collecting the information for the bills from the object
 
 bill_congresses = []
 bill_numbers = []
@@ -74,20 +87,20 @@ for bill in bills :
     clean_text = soup.get_text(separator=" ")
     prompts.append(clean_text)
 
-    #print(len(bill_congresses), len(bill_types), len(bill_numbers))
-    #print()
-    #print(f'Date: {action_date}; {current_chamber}; {action_desc}; Updated: {update_date}\n{clean_text}')
+    print('Prompts: ', len(prompts))
+    print("bill_numbers: ", len(bill_numbers))
+    print()
 
+# Selecting the pdfs from the bill summary information
+    
 pdf_urls = []
 
 with requests.Session() as session :
-    req_try = 1
     for bcong, btype, bnumb in zip(bill_congresses, bill_types, bill_numbers):
         text_url = f'https://api.congress.gov/v3/bill/{bcong}/{btype.lower()}/{bnumb}/text?api_key={congress_api_key}'
 
         try:
             link_response = session.get(text_url)
-            #print(req_try)
             time.sleep(1)
 
             if link_response.status_code == 200:
@@ -109,16 +122,16 @@ with requests.Session() as session :
                     print(pdf_url)
             else:
                 print(f"Failed to fetch data for {bcong}-{btype}-{bnumb}: {link_response.status_code}")
+                pdf_url = "PDF URL not found."
+                pdf_urls.append(pdf_url)
+
         except requests.RequestException as e:
                 print(f"Request failed: {e}")
-        req_try += 1
+
+# Setting up the OpenAI model, running through the prompts, then collecting the responses as 'stories'
 
 syst_instr = 'You are an experienced U.S. congressional reporter with over 18 years on the beat. Your new job includes sending weekly updates on the bills under consideration in Congress. You turn the bill summaries into one paragraph stories, up to 200 words, in narrative form, on what each bill is about, including important details such as costs; industries, groups or organizations affected, timeframes, etc. Your audience includes well-read Americans interested in politics and government.'
 stories = []
-
-print(f'Number of prompts: {len(prompts)}')
-
-try_num = 1
 
 for prompt in prompts:
     try:
@@ -131,9 +144,7 @@ for prompt in prompts:
             temperature=0.7,
             max_tokens=200,
         )
-        print(f'{try_num} prompt(s) completed')
-        try_num += 1
-        time.sleep(1)
+        time.sleep(3)
     except openai.RateLimitError:
         print("Rate limit exceeded. Waiting before retrying.")
         time.sleep(60)
@@ -147,22 +158,28 @@ for prompt in prompts:
     model_response = response.choices[0].message.content
     stories.append(model_response)
 
-print(f'Number of stories: {len(stories)}')
-#for story in stories:
-#    print(story)
-#    print()
-print(len(bill_titles), len(bill_actdescs), len(bill_actdates), len(stories), len(pdf_urls))
+# Gathering together the information for the email from the various API calls
+
 email_content = ""
-counter = 1
 for title, bill_actdesc, bill_actdate, story, pdf_url in zip(bill_titles, bill_actdescs, bill_actdates, stories, pdf_urls):
-    print(counter)
     email_content += f"'{title}' \n{bill_actdesc} as of {bill_actdate}\n{story}\nPDF at: {pdf_url}\n\n"
-    counter += 1
 
 print(email_content)
 
-sender_email = "your_email@example.com"
-receiver_email = "receiver@example.com"
+# Setting up the email for sending
+
+sender_email = os.getenv('SENDER_EMAIL_ADDR')
+if sender_email is not None:
+    print("Sender Email found!")
+else:
+    print("Sender email not found. Please set it as an environment variable.")
+
+receiver_email = os.getenv('RECEIVER_EMAIL_ADDR')
+if receiver_email is not None:
+    print("Receiver Email found!")
+else:
+    print("Receiver email not found. Please set it as an environment variable.")
+
 password = input("Type your password and press enter: ")
 
 msg = MIMEMultipart()
