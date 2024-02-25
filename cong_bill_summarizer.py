@@ -87,9 +87,9 @@ for bill in bills :
     clean_text = soup.get_text(separator=" ")
     prompts.append(clean_text)
 
-    print('Prompts: ', len(prompts))
-    print("bill_numbers: ", len(bill_numbers))
-    print()
+# print('Prompts: ', len(prompts))
+# print("bill_numbers: ", len(bill_numbers))
+# print()
 
 # Selecting the pdfs from the bill summary information
     
