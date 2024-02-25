@@ -21,11 +21,11 @@ Before you begin, ensure you have met the following requirements:
 
 1. Clone the repository to your local machine:
    ```
-   git clone https://github.com/yourusername/congressional-bill-summaries-emailer.git
+   git clone https://github.com/paularthurmiller/cong_bill_summarizer.git
    ```
 2. Navigate to the project directory:
    ```
-   cd congressional-bill-summaries-emailer
+   cd cong_bill_summarizer
    ```
 3. Create a Conda environment with the required packages:
    ```
